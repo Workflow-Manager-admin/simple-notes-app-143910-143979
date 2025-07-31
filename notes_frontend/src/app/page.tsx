@@ -1,101 +1,226 @@
-import Image from "next/image";
+"use client";
+import React, { useCallback, useEffect, useState } from "react";
+import Header from "@/components/Header";
+import Sidebar from "@/components/Sidebar";
+import Modal from "@/components/Modal";
+import NoteEditor from "@/components/NoteEditor";
+import NoteCard from "@/components/NoteCard";
+import NoteDetail from "@/components/NoteDetail";
+import {
+  fetchNotes,
+  fetchNote,
+  createNote,
+  updateNote,
+  deleteNote,
+  type Note,
+} from "./api";
 
-export default function Home() {
+type ViewMode = "DETAIL" | "CREATE" | "EDIT" | null;
+
+export default function NotesHome() {
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const [modalMode, setModalMode] = useState<ViewMode>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch all notes on mount, and after create/edit/delete
+  const refreshNotes = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const ns = await fetchNotes();
+      setNotes(ns);
+      // If a note is selected, refresh its detail
+      if (selectedNoteId) {
+        const matched = ns.find((n) => n.id === selectedNoteId);
+        setSelectedNote(matched ?? null);
+      }
+    } catch (e: unknown) {
+      setError(
+        typeof e === "object" && e !== null && "message" in e
+          ? String((e as { message?: unknown }).message)
+          : "Failed to load notes"
+      );
+    }
+    setLoading(false);
+  }, [selectedNoteId]);
+
+  useEffect(() => {
+    refreshNotes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Select a note and show details
+  const handleSelectNote = async (id: string) => {
+    setSelectedNoteId(id);
+    setModalMode("DETAIL");
+    setLoading(true);
+    setError(null);
+    try {
+      const note = await fetchNote(id);
+      setSelectedNote(note);
+    } catch (e: unknown) {
+      setError(
+        typeof e === "object" && e !== null && "message" in e
+          ? String((e as { message?: unknown }).message)
+          : "Failed to load note"
+      );
+    }
+    setLoading(false);
+  };
+
+  const handleCreate = () => {
+    setModalMode("CREATE");
+    setSelectedNoteId(null);
+    setSelectedNote(null);
+  };
+
+  const handleCreateNote = async (title: string, content: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await createNote({ title, content });
+      setModalMode(null);
+      await refreshNotes();
+    } catch (e: unknown) {
+      setError(
+        typeof e === "object" && e !== null && "message" in e
+          ? String((e as { message?: unknown }).message)
+          : "Failed to create note"
+      );
+    }
+    setLoading(false);
+  };
+
+  const handleEditNote = async (title: string, content: string) => {
+    if (!selectedNoteId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await updateNote(selectedNoteId, { title, content });
+      setModalMode(null);
+      await refreshNotes();
+    } catch (e: unknown) {
+      setError(
+        typeof e === "object" && e !== null && "message" in e
+          ? String((e as { message?: unknown }).message)
+          : "Failed to update note"
+      );
+    }
+    setLoading(false);
+  };
+
+  const handleDeleteNote = async () => {
+    if (!selectedNoteId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await deleteNote(selectedNoteId);
+      setModalMode(null);
+      setSelectedNoteId(null);
+      setSelectedNote(null);
+      await refreshNotes();
+    } catch (e: unknown) {
+      setError(
+        typeof e === "object" && e !== null && "message" in e
+          ? String((e as { message?: unknown }).message)
+          : "Failed to delete note"
+      );
+    }
+    setLoading(false);
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="min-h-screen bg-white text-[#171717]">
+      <Header />
+      <div className="flex min-h-[96vh]">
+        <Sidebar onNew={handleCreate} />
+        <main className="w-full px-0 sm:px-8 py-8 flex flex-col items-start bg-white">
+          <div className="w-full max-w-3xl mx-auto">
+            <h1 className="sr-only">Your Notes</h1>
+            {error && (
+              <div className="bg-red-50 border border-[#d93025] text-[#d93025] rounded px-4 py-2 mb-3 font-mono">
+                {error}
+              </div>
+            )}
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[#1a73e8] text-2xl font-bold">
+                Notes
+              </span>
+              <button
+                onClick={handleCreate}
+                className="bg-[#34a853] text-white rounded px-4 py-1 font-semibold shadow hover:bg-[#2a7844]"
+              >
+                New Note
+              </button>
+            </div>
+            {loading && <div className="pt-6 text-gray-500">Loading...</div>}
+            {!loading && notes.length === 0 && (
+              <div className="pt-6 text-gray-400">No notes yet. Create one!</div>
+            )}
+            <div className="mt-2 mb-4">
+              {notes.map((note) => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  selected={note.id === selectedNoteId}
+                  onClick={() => handleSelectNote(note.id)}
+                />
+              ))}
+            </div>
+          </div>
+        </main>
+      </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      {/* Create modal */}
+      <Modal
+        open={modalMode === "CREATE"}
+        onClose={() => setModalMode(null)}
+        title="Create a note"
+      >
+        <NoteEditor
+          action="create"
+          onSave={handleCreateNote}
+          onCancel={() => setModalMode(null)}
+          loading={loading}
+        />
+      </Modal>
+
+      {/* Detail & edit */}
+      <Modal
+        open={modalMode === "DETAIL" && !!selectedNote}
+        onClose={() => setModalMode(null)}
+        title={selectedNote?.title ?? ""}
+        width="max-w-lg"
+      >
+        {selectedNote && (
+          <NoteDetail
+            note={selectedNote}
+            onEdit={() => setModalMode("EDIT")}
+            onDelete={handleDeleteNote}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
+        )}
+      </Modal>
+      {/* Edit modal */}
+      <Modal
+        open={modalMode === "EDIT" && !!selectedNote}
+        onClose={() => setModalMode("DETAIL")}
+        title="Edit note"
+        width="max-w-lg"
+      >
+        {selectedNote && (
+          <NoteEditor
+            initialTitle={selectedNote.title}
+            initialContent={selectedNote.content}
+            action="edit"
+            onSave={handleEditNote}
+            onCancel={() => setModalMode("DETAIL")}
+            loading={loading}
           />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        )}
+      </Modal>
     </div>
   );
 }
